@@ -6,6 +6,7 @@ ESC: Exit
 Space: Capture Now
 S: start/stop Auto Capture (Every 3 sec)
 '''
+import sys
 import numpy as np
 import cv2
 import random as rand
@@ -88,9 +89,15 @@ def get_circle(img_size):
     return center, radius
 
 
-# def main():
-#     show_webcam(mirror=True)
-
 if __name__ == '__main__':
-    show_webcam('point')
-    #main()
+    if len(sys.argv) < 2:
+        print('python capture.py [pose] [folder]')
+        exit()
+
+    pose = sys.argv[1]
+    folder = sys.argv[2]
+
+    print('pose: ' + pose)
+    print('folder: ' + folder)
+
+    show_webcam(pose, folder)

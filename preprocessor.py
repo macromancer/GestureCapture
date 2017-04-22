@@ -164,14 +164,14 @@ def parse_name(file_name):
     return result.groupdict()
 
 
-def transform(img, center, min_x, min_y, max_x, max_y, seed=None, delta=0.1):
+def transform(img, center_x, center_y, min_x, min_y, max_x, max_y, seed=None, delta=0.1):
     (height, width) = img.shape[:2]
     sigma = np.float32([width, height]) * delta
 
     # original reference points
     p = np.float32([[min_x, max_y],
-                   [max_x, max_y],
-                   [max_x, min_y]])
+                    [max_x, max_y],
+                    [max_x, min_y]])
 
     # reference points after transformation
     np.random.seed(seed)
@@ -188,24 +188,120 @@ def transform(img, center, min_x, min_y, max_x, max_y, seed=None, delta=0.1):
     M = cv2.getAffineTransform(p, q)
     trans_img = cv2.warpAffine(img, M, (width, height))
 
-    trans_center = np.dot(M, np.transpose(np.array([center[0], center[1], 1]))).astype(int)
+    trans_center = np.dot(M, np.transpose(np.array([center_x, center_y, 1]))).astype(int)
 
     return trans_img, trans_center
 
 
-def demo_transform(src, dest, seed=None):
+def mirror(img, center_x, center_y):
+    width = img.shape[1]
+    mirrored_img = cv2.flip(img, 1)
+    mirrored_center = np.array([width - center_x, center_y])
+
+    return mirrored_img, mirrored_center
+
+
+def resize(img, width, height):
+    resized_img = cv2.resize(img, (width, height))
+
+    return resized_img
+
+
+def crop_randomly(img, width=None, height=None, crop_ratio=1.0, aspect_ratio=None, mandatory_point=None):
+    ori_height, ori_width = img.shape[:2]
+
+    if crop_ratio > 1.0:
+        raise ArithmeticError('crop_ratio should be less than 1.0, but %f' % crop_ratio)
+        return
+
+    if aspect_ratio <= 0:
+        raise ArithmeticError('aspect_ratio should be greater than 0.0, but %f' % aspect_ratio)
+        return
+
+    if width is None:
+        width = crop_ratio * ori_width
+
+    if height is None:
+        height = crop_ratio * ori_height
+
+    if aspect_ratio is not None:
+        if width > aspect_ratio * height:
+            width = int(aspect_ratio * height)
+        elif width < aspect_ratio * height:
+            height = int(width / float(aspect_ratio))
+
+    width = int(min(width, ori_width))
+    height = int(min(height, ori_height))
+
+    max_try = 100
+    while True:
+        min_x = np.random.randint(0, ori_width - width + 1)
+        min_y = np.random.randint(0, ori_height - height + 1)
+
+        max_x = min_x + width
+        max_y = min_y + height
+
+        if mandatory_point is None or (min_x <= mandatory_point[0] < max_x) and (min_y <= mandatory_point[1] < max_y):
+            break
+
+        max_try -= 1
+
+        if max_try < 0:
+            raise RuntimeError(
+                'random cropping is failed. mandatory_point=(%d, %d)' % (mandatory_point[0], mandatory_point[1]))
+
+    if mandatory_point is None:
+        return img[min_y:max_y, min_x:max_x], np.array([min_x, min_y])
+
+
+def demo_resize_bg(src, dest, width, height, rand_crop=None, transform_delta=None, seed=None):
+    img = cv2.imread(src)
+
+    if transform_delta is not None:
+        img, _ = transform(img, 0, 0, 0, 0, img.shape[1], img.shape[0], delta=transform_delta)
+
+    if rand_crop is not None:
+        img, _ = crop_randomly(img, crop_ratio=rand_crop, aspect_ratio=width / float(height))
+
+    img_resized = resize(img, width, height)
+
+    cv2.imwrite(dest, img_resized)
+
+
+def demo_resize_fg(src, dest, width, height, rand_crop=None, transform_delta=None, seed=None):
+    img = cv2.imread(src)
+
+    g = parse_name(os.path.basename(src))
+    center = np.array([int(g['center_x']), int(g['center_y'])])
+
+    if transform_delta is not None:
+        img, _ = transform(img, 0, 0, 0, 0, img.shape[1], img.shape[0], delta=transform_delta)
+
+    if rand_crop is not None:
+        img, min_point = crop_randomly(img, crop_ratio=rand_crop, aspect_ratio=width / float(height),
+                                       mandatory_point=center)
+
+        center = center - min_point
+
+    img_resized = resize(img, width, height)
+
+    cv2.imwrite(dest, img_resized)
+
+
+def demo_transform(src, dest, seed=None, delta=0.1):
     img = cv2.imread(src)
 
     g = parse_name(os.path.basename(src))
 
-    trans_img, trans_center = transform(img, (int(g['center_x']), int(g['center_y'])),
-                                        int(g['min_x']), int(g['min_y']), int(g['max_x']), int(g['max_y']), seed)
-
-    print('trans_center', trans_center)
-    trans_img = cv2.circle(trans_img, (trans_center[0], trans_center[1]), 50, (0,0,255), thickness=2)
+    trans_img, trans_center = transform(img,
+                                        int(g['center_x']), int(g['center_y']),
+                                        int(g['min_x']), int(g['min_y']),
+                                        int(g['max_x']), int(g['max_y']),
+                                        seed=seed, delta=delta)
+    trans_img, trans_center = mirror(trans_img, trans_center[0], trans_center[1])
+    trans_img = cv2.circle(trans_img, (trans_center[0], trans_center[1]), 50, (0, 0, 255), thickness=2)
     dest_file = dest + os.path.basename(src)
     cv2.imwrite(dest_file, trans_img)
-
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
@@ -236,5 +332,12 @@ if __name__ == '__main__':
         print(m)
     elif sys.argv[1] == "demo_transform":
         demo_transform(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "demo_resize":
+        demo_resize_bg('./imgs/bg/No_Gesture_182_553_50_20170305_114143.jpg', './imgs/modified/just_resized.png', 512,
+                       512)
+        demo_resize_bg('./imgs/bg/No_Gesture_182_553_50_20170305_114143.jpg', './imgs/modified/rand_crop_1.png', 512,
+                       512, rand_crop=1.)
+        demo_resize_bg('./imgs/bg/No_Gesture_182_553_50_20170305_114143.jpg', './imgs/modified/rand_crop_2.png', 512,
+                       512, rand_crop=0.6)
     else:
         print('invalid function [%s]' % sys.argv[1])

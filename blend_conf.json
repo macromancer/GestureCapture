@@ -1,0 +1,37 @@
+{
+  "clear": "True",
+  "count": "100",
+  "dest": "./imgs/modified",
+  "seed": "1",
+  "fg": {
+    "src": "./imgs/chroma",
+    "transform": {
+      "delta": "0.01"
+    },
+    "crop_randomly": {
+      "crop_ratio": "0.6",
+      "aspect_ratio": "1.0"
+    },
+    "mirror": {
+      "prob": "0.5"
+    },
+    "resize": {
+      "height": "512",
+      "width": "512"
+    }
+  },
+  "bg": {
+    "src": "./imgs/bg",
+    "transform": {
+      "delta": "0.01"
+    },
+    "crop_randomly": {
+      "crop_ratio": "0.6",
+      "aspect_ratio": "1.0"
+    },
+    "resize": {
+      "height": "512",
+      "width": "512"
+    }
+  }
+}

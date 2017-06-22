@@ -5,7 +5,7 @@ import preprocessor as pp
 class MyTestCase(unittest.TestCase):
     def test_parse_filename(self):
         filename='Pointing_Thumb_Up_691_235_50_20170304_110354_649_35_1920_1080.png'
-        g = pp.parse_name(filename)
+        g = pp.parse_name_chroma(filename)
 
         self.assertEqual('Pointing_Thumb_Up', g['gesture'])
         self.assertEqual('691', g['center_x'])

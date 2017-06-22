@@ -100,22 +100,6 @@ def get_bounding_rect(a):
     return np.min(nonzero_x), np.min(nonzero_y), np.max(nonzero_x) + 1, np.max(nonzero_y) + 1
 
 
-# def blend(src_fg, src_bg, dest, count=None):
-#     if not os.path.exists(src_fg):
-#         raise IOError('Error: %s does not exists' % src_fg)
-#
-#     if not os.path.exists(src_bg):
-#         raise IOError('Error: %s does not exists' % src_bg)
-#
-#     if not os.path.exists(dest):
-#         print('%s does not exist. mkdir %s' % (dest, dest))
-#         os.makedirs(dest)
-#
-#     if not os.path.isdir(dest):
-#         print('Warning: destination path [%s] is a file. file name will be ignored.' % dest)
-#         dest = os.path.dirname(dest)
-
-
 def blend_img_file(fg_file, bg_file, dest_dir, seq=None, ext='png'):
     if not os.path.exists(fg_file):
         raise IOError('Error: %s does not exists' % fg_file)
@@ -157,6 +141,18 @@ def blend_img(fg, bg):
 
 
 def parse_name(file_name):
+    filename_pattern = r'^(?P<gesture>\D+)_' \
+                       r'(?P<center_x>[\-\d\.]+)_(?P<center_y>[\-\d\.]+)_' \
+                       r'(?P<center_r>\d+)_' \
+                       r'(?P<date>\d+)_(?P<time>\d+)' \
+                       r'\.(?P<ext>\w+)'
+
+    result = re.match(filename_pattern, file_name)
+
+    return result.groupdict()
+
+
+def parse_name_chroma(file_name):
     filename_pattern = r'^(?P<gesture>\D+)_' \
                        r'(?P<center_x>[\-\d\.]+)_(?P<center_y>[\-\d\.]+)_' \
                        r'(?P<center_r>\d+)_' \
@@ -274,7 +270,7 @@ def demo_resize_bg(src, dest, width, height, rand_crop=None, transform_delta=Non
 def demo_resize_fg(src, dest, width, height, rand_crop=None, transform_delta=None, seed=None):
     img = cv2.imread(src)
 
-    g = parse_name(os.path.basename(src))
+    g = parse_name_chroma(os.path.basename(src))
     center = np.array([int(g['center_x']), int(g['center_y'])])
 
     if transform_delta is not None:
@@ -294,7 +290,7 @@ def demo_resize_fg(src, dest, width, height, rand_crop=None, transform_delta=Non
 def demo_transform(src, dest, delta=0.1):
     img = cv2.imread(src)
 
-    i = parse_name(os.path.basename(src))
+    i = parse_name_chroma(os.path.basename(src))
 
     trans_img, trans_center = transform(img,
                                         int(i['center_x']), int(i['center_y']),
@@ -307,7 +303,7 @@ def demo_transform(src, dest, delta=0.1):
     cv2.imwrite(dest_file, trans_img)
 
 
-def blend(conf_file, src_fg=None, src_bg=None, dest=None):
+def preprocess_blend(conf_file, src_fg=None, src_bg=None, dest=None):
     with open(conf_file) as json_data:
         conf = json.load(json_data)
 
@@ -332,7 +328,7 @@ def blend(conf_file, src_fg=None, src_bg=None, dest=None):
             print('Warning: destination path [%s] is a file. file name will be ignored.' % dest_dir)
             dest_dir = os.path.dirname(dest_dir)
 
-        if 'clear' in conf and bool(conf['clear']):
+        if 'clear' in conf and conf['clear'] == 'True':
             work_dir = os.getcwd()
             try:
                 os.chdir(dest_dir)
@@ -348,20 +344,20 @@ def blend(conf_file, src_fg=None, src_bg=None, dest=None):
         for i in range(int(conf['count'])):
             file_fg = random.choice(list_file_fg)
 
-            i = parse_name(file_fg)
+            info = parse_name_chroma(file_fg)
 
             img_fg = cv2.imread(src_fg + '/' + file_fg, cv2.IMREAD_UNCHANGED)
             (height_fg, width_fg) = img_fg.shape[:2]
 
-            center = np.array([int(i['center_x']), int(i['center_y'])])
+            center = np.array([int(info['center_x']), int(info['center_y'])])
 
             if 'fg' in conf and 'transform' in conf['fg']:
                 delta = get_conf_float(conf['fg']['transform'], 'delta', 0.01)
 
                 img_fg, center = transform(img_fg,
                                            center[0], center[1],
-                                           int(i['min_x']), int(i['min_y']),
-                                           int(i['max_x']), int(i['max_y']),
+                                           int(info['min_x']), int(info['min_y']),
+                                           int(info['max_x']), int(info['max_y']),
                                            delta=delta)
 
             if 'fg' in conf and 'crop_randomly' in conf['fg']:
@@ -398,8 +394,8 @@ def blend(conf_file, src_fg=None, src_bg=None, dest=None):
                 delta = get_conf_float(conf['bg']['transform'], 'delta', 0.01)
 
                 img_bg, _ = transform(img_bg, 0, 0,
-                                      int(i['min_x']), int(i['min_y']),
-                                      int(i['max_x']), int(i['max_y']),
+                                      int(info['min_x']), int(info['min_y']),
+                                      int(info['max_x']), int(info['max_y']),
                                       delta=delta)
 
             if 'bg' in conf and 'crop_randomly' in conf['bg']:
@@ -419,13 +415,13 @@ def blend(conf_file, src_fg=None, src_bg=None, dest=None):
 
             random_code = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(8))
 
-            file_new = '_'.join([i["gesture"],
+            file_new = '_'.join([info["gesture"],
                                  'R' if isRight else 'L',
                                  random_code,
                                  '{:.2f}'.format(center[0]),
                                  '{:.2f}'.format(center[1]), ]) + ".jpg"
 
-            print('%s + %s -> %s' % (file_fg, file_bg, file_new))
+            print('%d %s + %s -> %s' % (i, file_fg, file_bg, file_new))
 
             cv2.imwrite(dest_dir + "/" + file_new, img)
 
@@ -436,6 +432,96 @@ def get_conf_float(conf, key, default=0.0):
         return val
 
     return default
+
+
+def preprocess_transform(conf_file, src_dir=None, dest_dir=None):
+    with open(conf_file) as json_data:
+        conf = json.load(json_data)
+
+        if src_dir is None:
+            src_dir = conf['src']
+
+        if not os.path.exists(src_dir):
+            raise IOError('Error: %s does not exists' % src_dir)
+
+        if dest_dir is None:
+            dest_dir = conf["dest"]
+
+        if not os.path.exists(dest_dir):
+            print('%s does not exist. mkdir %s' % (dest_dir, dest_dir))
+            os.makedirs(dest_dir)
+
+        if not os.path.isdir(dest_dir):
+            print('Warning: destination path [%s] is a file. file name will be ignored.' % dest_dir)
+            dest_dir = os.path.dirname(dest_dir)
+
+        if 'clear' in conf and conf['clear'] == 'True':
+            work_dir = os.getcwd()
+            try:
+                os.chdir(dest_dir)
+                [os.remove(f) for f in os.listdir('.')]
+            finally:
+                os.chdir(work_dir)
+
+        if 'seed' in conf and conf['seed'] is not None:
+            np.random.seed(int(conf['seed']))
+
+        list_file_src = os.listdir(src_dir)
+        for i in range(int(conf['count'])):
+            file_src = random.choice(list_file_src)
+
+            info = parse_name(file_src)
+
+            img = cv2.imread(src_dir + '/' + file_src, cv2.IMREAD_UNCHANGED)
+            (height_src, width_src) = img.shape[:2]
+
+            center = np.array([int(info['center_x']), int(info['center_y'])])
+
+            if 'transform' in conf:
+                delta = get_conf_float(conf['transform'], 'delta', 0.01)
+
+                img, center = transform(img,
+                                        center[0], center[1],
+                                        0, 0, width_src, height_src,
+                                        delta=delta)
+
+            if 'crop_randomly' in conf:
+                conf_crop = conf['crop_randomly']
+                crop_ratio = get_conf_float(conf_crop, 'crop_ratio', 1.0)
+                aspect_ratio = get_conf_float(conf_crop, 'aspect_ratio', width_src / float(height_src))
+
+                img, min_point = crop_randomly(img, crop_ratio=crop_ratio, aspect_ratio=aspect_ratio,
+                                               mandatory_point=center)
+                center -= min_point
+
+            is_right = True
+            if 'mirror' in conf:
+                mirror_prob = get_conf_float(conf['mirror'], 'prob', 0.5)
+
+                if np.random.random() < mirror_prob:
+                    img, center = mirror(img, center)
+                    is_right = False
+
+            if 'resize' in conf:
+                width = int(conf['resize']['width'])
+                height = int(conf['resize']['height'])
+                (height_src, width_src) = img.shape[:2]
+
+                img = resize(img, width, height)
+
+                center = np.array([center[0] * width / float(width_src), center[1] * height / float(width_src)])
+
+            random_code = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+
+            file_new = '_'.join([info["gesture"],
+                                 'R' if is_right else 'L',
+                                 random_code,
+                                 '{:.2f}'.format(center[0]),
+                                 '{:.2f}'.format(center[1]), ]) + ".jpg"
+
+            print('%d %s -> %s' % (i, file_src, file_new))
+
+            cv2.imwrite(dest_dir + "/" + file_new, img)
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
@@ -462,7 +548,7 @@ if __name__ == '__main__':
     #         exit()
     #     blend_img_file(sys.argv[2], sys.argv[3], sys.argv[4])
     elif sys.argv[1] == "parse":
-        m = parse_name('Pointing_Thumb_Up_691_235_50_20170304_110354_649_35_1920_1080.png')
+        m = parse_name_chroma('Pointing_Thumb_Up_691_235_50_20170304_110354_649_35_1920_1080.png')
         print(m)
     elif sys.argv[1] == "demo_transform":
         demo_transform(sys.argv[2], sys.argv[3])
@@ -480,7 +566,15 @@ if __name__ == '__main__':
         else:
             conf_file = sys.argv[2]
 
-        blend(conf_file)
+        preprocess_blend(conf_file)
+
+    elif sys.argv[1] == "transform":
+        if len(sys.argv) < 3:
+            conf_file = './transform_conf.json'
+        else:
+            conf_file = sys.argv[2]
+
+        preprocess_transform(conf_file)
 
     else:
         print('invalid function [%s]' % sys.argv[1])

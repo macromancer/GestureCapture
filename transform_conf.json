@@ -1,0 +1,21 @@
+{
+  "clear": "False",
+  "count": "1000",
+  "dest": "/media/kikim/Data/data/Gestures/img/20170524_test",
+  "seed": "1",
+  "src": "/media/kikim/Data/data/Gestures/bg/20170404",
+  "transform": {
+    "delta": "0.01"
+  },
+  "crop_randomly": {
+    "crop_ratio": "0.9",
+    "aspect_ratio": "1.0"
+  },
+  "mirror": {
+    "prob": "0.5"
+  },
+  "resize": {
+    "height": "256",
+    "width": "256"
+  }
+}
